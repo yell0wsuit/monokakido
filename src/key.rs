@@ -19,25 +19,25 @@ mod abi {
     #[repr(C)]
     #[derive(Debug, Clone, Copy, Default)]
     pub(super) struct FileHeader {
+        magic0: LE32,
         magic1: LE32,
-        magic2: LE32,
         pub words_offset: LE32,
         pub idx_offset: LE32,
-        magic3: LE32,
-        magic4: LE32,
+        pub next_offset: LE32, // Jimmy-Z: no idea what this is
         magic5: LE32,
         magic6: LE32,
+        magic7: LE32,
     }
 
     impl FileHeader {
         pub(super) fn validate(&self) -> Result<(), Error> {
-            if self.magic1.read() == 0x20000
-                && self.magic2.read() == 0
-                && self.magic3.read() == 0
-                && self.magic4.read() == 0
+            if self.magic0.read() == 0x20000
+                && self.magic1.read() == 0
                 && self.magic5.read() == 0
                 && self.magic6.read() == 0
+                && self.magic7.read() == 0
                 && self.words_offset.us() < self.idx_offset.us()
+                && (self.next_offset.read() == 0 || self.idx_offset.us() < self.next_offset.us())
             {
                 Ok(())
             } else {
@@ -130,7 +130,11 @@ impl Keys {
         let words = read_vec(&mut file, hdr.words_offset.us(), hdr.idx_offset.us())?;
         let Some(words) = words else { return Err(Error::InvalidIndex); };
 
-        let idx_end = file_size - hdr.idx_offset.us();
+        let idx_end = (if hdr.next_offset.us() == 0 {
+            file_size
+        }else {
+            hdr.next_offset.us()
+        }) - hdr.idx_offset.us();
         let mut ihdr = IndexHeader::default();
         file.seek(std::io::SeekFrom::Start(hdr.idx_offset.read() as u64))?;
         file.read_exact(ihdr.as_bytes_mut())?;

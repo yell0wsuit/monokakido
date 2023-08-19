@@ -2,14 +2,14 @@ use std::{
     borrow::Cow,
     cmp::Ordering,
     fs::File,
-    path::Path,
     io::{Read, Seek},
     mem::size_of,
+    path::Path,
     str::from_utf8,
 };
 
 use crate::{
-    abi_utils::{TransmuteSafe, LE32, read_vec},
+    abi_utils::{read_vec, TransmuteSafe, LE32},
     Error,
 };
 
@@ -19,27 +19,42 @@ mod abi {
     #[repr(C)]
     #[derive(Debug, Clone, Copy, Default)]
     pub(super) struct FileHeader {
-        magic0: LE32,
+        pub ver: LE32,
         magic1: LE32,
         pub words_offset: LE32,
         pub idx_offset: LE32,
-        pub next_offset: LE32, // Jimmy-Z: no idea what this is
+        // Jimmy-Z: no idea what this is
+        // present on (not limited to) OALD10, SANKOKU8
+        pub next_offset: LE32,
         magic5: LE32,
         magic6: LE32,
         magic7: LE32,
     }
 
     impl FileHeader {
-        pub(super) fn validate(&self) -> Result<(), Error> {
-            if self.magic0.read() == 0x20000
-                && self.magic1.read() == 0
-                && self.magic5.read() == 0
-                && self.magic6.read() == 0
-                && self.magic7.read() == 0
-                && self.words_offset.us() < self.idx_offset.us()
-                && (self.next_offset.read() == 0 || self.idx_offset.us() < self.next_offset.us())
+        pub(super) fn from(r: &mut impl Read) -> Result<Self, Error> {
+            let mut h = FileHeader::default();
+            r.read_exact(&mut h.as_bytes_mut()[..0x10])?;
+            if h.ver.read() == 0x10000 && h.words_offset.read() == 0x10{
+            } else if h.ver.read() == 0x20000 && h.words_offset.read() == 0x20 {
+                r.read_exact(&mut h.as_bytes_mut()[0x10..])?;
+            } else {
+                return Err(Error::KeyFileHeaderValidate)
+            }
+            if h.ver.read() == 0x10000
+                && h.magic1.read() == 0
+                && h.words_offset.us() < h.idx_offset.us()
             {
-                Ok(())
+                Ok(h)
+            } else if h.ver.read() == 0x20000
+                && h.magic1.read() == 0
+                && h.magic5.read() == 0
+                && h.magic6.read() == 0
+                && h.magic7.read() == 0
+                && h.words_offset.us() < h.idx_offset.us()
+                && (h.next_offset.read() == 0 || h.idx_offset.us() < h.next_offset.us())
+            {
+                Ok(h)
             } else {
                 Err(Error::KeyFileHeaderValidate)
             }
@@ -122,9 +137,7 @@ impl Keys {
     pub fn new<P: AsRef<Path>>(path: P) -> Result<Keys, Error> {
         let mut file = File::open(path)?;
         let file_size = file.metadata()?.len() as usize;
-        let mut hdr = FileHeader::default();
-        file.read_exact(hdr.as_bytes_mut())?;
-        hdr.validate()?;
+        let hdr = FileHeader::from(&mut file)?;
 
         file.seek(std::io::SeekFrom::Start(hdr.words_offset.read() as u64))?;
         let words = read_vec(&mut file, hdr.words_offset.us(), hdr.idx_offset.us())?;
@@ -132,7 +145,7 @@ impl Keys {
 
         let idx_end = (if hdr.next_offset.us() == 0 {
             file_size
-        }else {
+        } else {
             hdr.next_offset.us()
         }) - hdr.idx_offset.us();
         let mut ihdr = IndexHeader::default();

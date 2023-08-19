@@ -60,9 +60,7 @@ impl Paths {
     }
 
     pub(crate) fn key_path(&self) -> PathBuf {
-        let mut pb = PathBuf::from(&self.base_path);
-        pb.push("Contents");
-        pb.push(&self.contents_dir);
+        let mut pb = self.contents_path();
         pb.push("key");
         pb
     }
@@ -74,9 +72,7 @@ impl Paths {
     }
 
     pub(crate) fn headline_path(&self) -> PathBuf {
-        let mut pb = PathBuf::from(&self.base_path);
-        pb.push("Contents");
-        pb.push(&self.contents_dir);
+        let mut pb = self.contents_path();
         pb.push("headline");
         pb
     }
@@ -136,7 +132,7 @@ impl MonokakidoDict {
         };
         let pages = Pages::new(&paths)?;
         let audio = Audio::new(&paths)?;
-        let keys = Keys::new(&paths)?;
+        let keys = Keys::new(paths.key_headword_path())?;
 
         Ok(MonokakidoDict {
             paths,

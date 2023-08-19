@@ -2,6 +2,7 @@ use std::{
     borrow::Cow,
     cmp::Ordering,
     fs::File,
+    path::Path,
     io::{Read, Seek},
     mem::size_of,
     str::from_utf8,
@@ -9,7 +10,6 @@ use std::{
 
 use crate::{
     abi_utils::{TransmuteSafe, LE32, read_vec},
-    dict::Paths,
     Error,
 };
 
@@ -119,8 +119,8 @@ impl Keys {
         Ok(())
     }
 
-    pub fn new(paths: &Paths) -> Result<Keys, Error> {
-        let mut file = File::open(paths.key_headword_path())?;
+    pub fn new<P: AsRef<Path>>(path: P) -> Result<Keys, Error> {
+        let mut file = File::open(path)?;
         let file_size = file.metadata()?.len() as usize;
         let mut hdr = FileHeader::default();
         file.read_exact(hdr.as_bytes_mut())?;

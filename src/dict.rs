@@ -53,7 +53,7 @@ impl Paths {
     }
 
     fn list_path() -> PathBuf {
-        read_config()
+        Self::read_config()
             .map(PathBuf::from)
             .unwrap_or_else(|_| {
                 // Fallback to default path if config reading fails
@@ -62,7 +62,7 @@ impl Paths {
     }
 
     fn std_dict_path(name: &str) -> PathBuf {
-        let mut path = Paths::std_list_path();
+        let mut path = Paths::list_path();
         path.push(format!("jp.monokakido.Dictionaries.{name}"));
         path
     }
@@ -114,7 +114,7 @@ fn parse_dict_name(fname: &OsStr) -> Option<&str> {
 
 impl MonokakidoDict {
     pub fn list() -> Result<impl Iterator<Item = Result<String, Error>>, Error> {
-        let iter = fs::read_dir(Paths::std_list_path()).map_err(|_| Error::IOError)?;
+        let iter = fs::read_dir(Paths::list_path()).map_err(|_| Error::IOError)?;
         Ok(iter.filter_map(|entry| {
             entry
                 .map_err(|_| Error::IOError)

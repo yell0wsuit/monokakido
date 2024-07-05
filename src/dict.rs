@@ -4,6 +4,7 @@ use std::{
     fs,
     path::{Path, PathBuf},
 };
+use toml::Value;
 
 use crate::{media::Media, key::Keys, pages::Pages, Error};
 
@@ -33,11 +34,31 @@ pub struct Paths {
     contents_dir: String,
 }
 
+impl AsRef<Path> for Paths {
+    fn as_ref(&self) -> &Path {
+        &self.base_path
+    }
+}
+
 impl Paths {
-    fn std_list_path() -> PathBuf {
-        PathBuf::from(
-            "/Library/Application Support/AppStoreContent/jp.monokakido.Dictionaries/Products/",
-        )
+    fn read_config() -> Result<String, Box<dyn std::error::Error>> {
+        let config_str = fs::read_to_string("config.toml")?;
+        let config: Value = toml::from_str(&config_str)?;
+        
+        let dict_path = config["dict_path"].as_str()
+            .ok_or("dict_path not found or not a string")?
+            .to_string();
+    
+        Ok(dict_path)
+    }
+
+    fn list_path() -> PathBuf {
+        read_config()
+            .map(PathBuf::from)
+            .unwrap_or_else(|_| {
+                // Fallback to default path if config reading fails
+                PathBuf::from("/Library/Application Support/AppStoreContent/jp.monokakido.Dictionaries/Products/")
+            })
     }
 
     fn std_dict_path(name: &str) -> PathBuf {
@@ -134,7 +155,7 @@ impl MonokakidoDict {
         let pages = Pages::new(&paths)?;
         let audio = Media::new(&paths)?;
         let graphics = Media::new(&paths)?;
-        let keys = Keys::new(&paths)?;
+        let keys = Keys::new(paths.contents_path())?;
 
         Ok(MonokakidoDict {
             paths,

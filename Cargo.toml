@@ -1,5 +1,5 @@
 [package]
-name = "rustkakido"
+name = "monokakido"
 version = "0.3.2"
 edition = "2021"
 description = "A Rust library for parsing and interpreting the Monokakido dictionary format."

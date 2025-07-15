@@ -86,24 +86,19 @@ jobs:
         runs-on: ubuntu-latest
 
         steps:
-            - name: Create Release
-              id: create_release
-              uses: actions/create-release@main
-              env:
-                  GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-              with:
-                  tag_name: ${{ needs.create_tag.outputs.new_tag }}
-                  release_name: Release ${{ needs.create_tag.outputs.new_tag }}
-                  draft: false
-                  prerelease: false
-
             - name: Download artifacts
               uses: actions/download-artifact@main
+              with:
+                  path: ./artifacts
 
-            - name: Upload Release Assets
+            - name: Create GitHub Release
+              uses: softprops/action-gh-release@v2
+              with:
+                  tag_name: ${{ needs.create_tag.outputs.new_tag }}
+                  name: Release ${{ needs.create_tag.outputs.new_tag }}
+                  draft: false
+                  prerelease: false
+                  files: |
+                      ./artifacts/*/*
               env:
                   GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-              run: |
-                  for asset in monokakido-*; do
-                    gh release upload ${{ needs.create_tag.outputs.new_tag }} "$asset" --clobber
-                  done

@@ -52,13 +52,13 @@ jobs:
                 include:
                     - os: ubuntu-latest
                       artifact_name: target/release/monokakido
-                      asset_name: rustkakido-linux
+                      asset_name: monokakido-cli-linux
                     - os: windows-latest
                       artifact_name: target/release/monokakido.exe
-                      asset_name: rustkakido-windows.exe
+                      asset_name: monokakido-cli-windows.exe
                     - os: macos-latest
                       artifact_name: target/release/monokakido
-                      asset_name: rustkakido-macos
+                      asset_name: monokakido-cli-macos
 
         steps:
             - uses: actions/checkout@main

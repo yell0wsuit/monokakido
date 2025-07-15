@@ -357,14 +357,27 @@ fn file_offset(contents: &mut [ResourceFile], offset: usize) -> Result<(&mut Fil
 
 #[test]
 fn test_file_offset() {
+    #[cfg(unix)]
     use std::os::unix::prelude::AsRawFd;
+    #[cfg(windows)]
+    use std::os::windows::prelude::AsRawHandle;
+
+    #[cfg(unix)]
+    fn raw_file_id(f: &File) -> i32 {
+        f.as_raw_fd()
+    }
+    #[cfg(windows)]
+    fn raw_file_id(f: &File) -> std::os::windows::raw::HANDLE {
+        f.as_raw_handle()
+    }
 
     assert_eq!(file_offset(&mut [], 0).err(), Some(Error::InvalidIndex));
 
+    use tempfile::tempfile;
     let mock_file = || {
-        let f = File::open("/dev/zero").unwrap();
-        let fd = f.as_raw_fd();
-        (f, fd)
+        let f = tempfile().unwrap();
+        let id = raw_file_id(&f);
+        (f, id)
     };
     let (f1, f1_fd) = mock_file();
     let one_file = &mut vec![ResourceFile {
@@ -381,11 +394,11 @@ fn test_file_offset() {
     assert_eq!(result.err(), Some(Error::InvalidIndex));
 
     let result = file_offset(one_file, 0);
-    assert_eq!(result.as_ref().map(|f| f.0.as_raw_fd()), Ok(f1_fd));
+    assert_eq!(result.as_ref().map(|f| raw_file_id(&f.0)), Ok(f1_fd));
     assert_eq!(result.as_ref().map(|f| f.1), Ok(0));
 
     let result = file_offset(one_file, 99);
-    assert_eq!(result.as_ref().map(|f| f.0.as_raw_fd()), Ok(f1_fd));
+    assert_eq!(result.as_ref().map(|f| raw_file_id(&f.0)), Ok(f1_fd));
     assert_eq!(result.as_ref().map(|f| f.1), Ok(99));
 
     let (f1, f1_fd) = mock_file();
@@ -412,19 +425,19 @@ fn test_file_offset() {
     assert_eq!(result.err(), Some(Error::InvalidIndex));
 
     let result = file_offset(two_files, 0);
-    assert_eq!(result.as_ref().map(|f| f.0.as_raw_fd()), Ok(f1_fd));
+    assert_eq!(result.as_ref().map(|f| raw_file_id(&f.0)), Ok(f1_fd));
     assert_eq!(result.as_ref().map(|f| f.1), Ok(0));
 
     let result = file_offset(two_files, 99);
-    assert_eq!(result.as_ref().map(|f| f.0.as_raw_fd()), Ok(f1_fd));
+    assert_eq!(result.as_ref().map(|f| raw_file_id(&f.0)), Ok(f1_fd));
     assert_eq!(result.as_ref().map(|f| f.1), Ok(99));
 
     let result = file_offset(two_files, 100);
-    assert_eq!(result.as_ref().map(|f| f.0.as_raw_fd()), Ok(f2_fd));
+    assert_eq!(result.as_ref().map(|f| raw_file_id(&f.0)), Ok(f2_fd));
     assert_eq!(result.as_ref().map(|f| f.1), Ok(0));
 
     let result = file_offset(two_files, 299);
-    assert_eq!(result.as_ref().map(|f| f.0.as_raw_fd()), Ok(f2_fd));
+    assert_eq!(result.as_ref().map(|f| raw_file_id(&f.0)), Ok(f2_fd));
     assert_eq!(result.as_ref().map(|f| f.1), Ok(199));
 
     let (f1, f1_fd) = mock_file();
@@ -458,27 +471,27 @@ fn test_file_offset() {
     assert_eq!(result.err(), Some(Error::InvalidIndex));
 
     let result = file_offset(three_files, 0);
-    assert_eq!(result.as_ref().map(|f| f.0.as_raw_fd()), Ok(f1_fd));
+    assert_eq!(result.as_ref().map(|f| raw_file_id(&f.0)), Ok(f1_fd));
     assert_eq!(result.as_ref().map(|f| f.1), Ok(0));
 
     let result = file_offset(three_files, 99);
-    assert_eq!(result.as_ref().map(|f| f.0.as_raw_fd()), Ok(f1_fd));
+    assert_eq!(result.as_ref().map(|f| raw_file_id(&f.0)), Ok(f1_fd));
     assert_eq!(result.as_ref().map(|f| f.1), Ok(99));
 
     let result = file_offset(three_files, 100);
-    assert_eq!(result.as_ref().map(|f| f.0.as_raw_fd()), Ok(f2_fd));
+    assert_eq!(result.as_ref().map(|f| raw_file_id(&f.0)), Ok(f2_fd));
     assert_eq!(result.as_ref().map(|f| f.1), Ok(0));
 
     let result = file_offset(three_files, 299);
-    assert_eq!(result.as_ref().map(|f| f.0.as_raw_fd()), Ok(f2_fd));
+    assert_eq!(result.as_ref().map(|f| raw_file_id(&f.0)), Ok(f2_fd));
     assert_eq!(result.as_ref().map(|f| f.1), Ok(199));
 
     let result = file_offset(three_files, 300);
-    assert_eq!(result.as_ref().map(|f| f.0.as_raw_fd()), Ok(f3_fd));
+    assert_eq!(result.as_ref().map(|f| raw_file_id(&f.0)), Ok(f3_fd));
     assert_eq!(result.as_ref().map(|f| f.1), Ok(0));
 
     let result = file_offset(three_files, 399);
-    assert_eq!(result.as_ref().map(|f| f.0.as_raw_fd()), Ok(f3_fd));
+    assert_eq!(result.as_ref().map(|f| raw_file_id(&f.0)), Ok(f3_fd));
     assert_eq!(result.as_ref().map(|f| f.1), Ok(99));
 }
 

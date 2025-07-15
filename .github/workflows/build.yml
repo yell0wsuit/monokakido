@@ -104,6 +104,6 @@ jobs:
               env:
                   GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
               run: |
-                  for asset in rustkakido-*; do
+                  for asset in monokakido-*; do
                     gh release upload ${{ needs.create_tag.outputs.new_tag }} "$asset" --clobber
                   done

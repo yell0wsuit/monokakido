@@ -243,14 +243,27 @@ impl Rsc {
     fn parse_fname(rsc_name: &str, fname: &OsStr) -> Option<u32> {
         let fname = fname.to_str()?;
         let ext = ".rsc";
-        let min_len = rsc_name.len() + 1 + ext.len();
-        if fname.starts_with(rsc_name) && fname.ends_with(ext) && fname.len() > min_len {
-            let seqnum_start = rsc_name.len() + 1;
-            let seqnum_end = fname.len() - ext.len();
-            fname[seqnum_start..seqnum_end].parse().ok()
-        } else {
-            None
+
+        if !fname.starts_with(rsc_name) || !fname.ends_with(ext) {
+            return None;
         }
+
+        let middle_part = &fname[rsc_name.len()..fname.len() - ext.len()];
+
+        // Handle new format: contents-0001.rsc
+        if let Some(dash_pos) = middle_part.find('-') {
+            if dash_pos == 0 {
+                // starts with dash
+                return middle_part[1..].parse().ok();
+            }
+        }
+
+        // Handle old format: contents1.rsc
+        if middle_part.len() > 0 && middle_part.chars().next()? != '-' {
+            return middle_part.parse().ok();
+        }
+
+        None
     }
 
     fn files(path: &Path, rsc_name: &str) -> Result<Vec<ResourceFile>, Error> {
@@ -259,6 +272,7 @@ impl Rsc {
         for entry in fs::read_dir(path).map_err(|_| Error::IOError)? {
             let entry = entry.map_err(|_| Error::IOError)?;
             let seqnum = Self::parse_fname(rsc_name, &entry.file_name());
+            println!("File: {:?}, Parsed seqnum: {:?}", entry.file_name(), seqnum); // DEBUG
             if let Some(seqnum) = seqnum {
                 files.push(ResourceFile {
                     seqnum,
@@ -269,9 +283,20 @@ impl Rsc {
             }
         }
         files.sort_by_key(|f| f.seqnum);
+        println!(
+            "Sorted sequence numbers: {:?}",
+            files.iter().map(|f| f.seqnum).collect::<Vec<_>>()
+        ); // DEBUG
         let mut offset = 0;
         for (i, cf) in files.iter_mut().enumerate() {
+            println!(
+                "Checking: index {} expects seqnum {}, got {}",
+                i,
+                i as u32 + 1,
+                cf.seqnum
+            ); // DEBUG
             if cf.seqnum != i as u32 + 1 {
+                println!("ERROR: Sequence number mismatch!"); // DEBUG
                 return Err(Error::MissingResourceFile);
             }
             cf.offset = offset;

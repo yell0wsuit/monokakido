@@ -26,10 +26,34 @@ fn write_index(dict: &MonokakidoDict, index: &KeyIndex, tsv_fname: &str) -> Resu
     Ok(())
 }
 
-fn explode() -> Result<(), Error> {
-    let arg = std::env::args().nth(1).ok_or(Error::InvalidArg)?;
+fn parse_args() -> (Option<String>, Option<String>) {
+    let mut args: Vec<String> = std::env::args().collect();
+    args.remove(0); // Remove program name
 
-    let mut dict = MonokakidoDict::open(&arg)?;
+    let mut custom_dir = None;
+    let mut dict_name = None;
+
+    let mut i = 0;
+    while i < args.len() {
+        if args[i] == "--dir" && i + 1 < args.len() {
+            custom_dir = Some(args[i + 1].clone());
+            i += 2; // Skip both --dir and its value
+        } else if dict_name.is_none() {
+            dict_name = Some(args[i].clone());
+            i += 1;
+        } else {
+            i += 1;
+        }
+    }
+
+    (custom_dir, dict_name)
+}
+
+fn explode() -> Result<(), Error> {
+    let (custom_dir, dict_name) = parse_args();
+    let dict_name = dict_name.ok_or(Error::InvalidArg)?;
+
+    let mut dict = MonokakidoDict::open_with_dir(&dict_name, custom_dir.as_deref())?;
 
     let pages_dir = out_dir(&dict) + "pages/";
     let audio_dir = out_dir(&dict) + "audio/";
@@ -79,5 +103,6 @@ fn explode() -> Result<(), Error> {
 fn main() {
     if let Err(err) = explode() {
         eprintln!("{err:?}");
+        eprintln!("Usage: monokakido-explode [--dir <directory>] <dict_name>");
     };
 }

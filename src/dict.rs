@@ -6,7 +6,7 @@ use std::{
 };
 use toml::Value;
 
-use crate::{media::Media, key::Keys, pages::Pages, Error};
+use crate::{key::Keys, media::Media, pages::Pages, Error};
 
 pub struct MonokakidoDict {
     paths: Paths,
@@ -44,26 +44,31 @@ impl Paths {
     fn read_config() -> Result<String, Box<dyn std::error::Error>> {
         let config_str = fs::read_to_string("config.toml")?;
         let config: Value = toml::from_str(&config_str)?;
-        
-        let dict_path = config["dict_path"].as_str()
+
+        let dict_path = config["dict_path"]
+            .as_str()
             .ok_or("dict_path not found or not a string")?
             .to_string();
-    
+
         Ok(dict_path)
     }
 
-    fn list_path() -> PathBuf {
-        Self::read_config()
-            .map(PathBuf::from)
-            .unwrap_or_else(|_| {
-                // Fallback to default path if config reading fails
-                PathBuf::from("/Library/Application Support/AppStoreContent/jp.monokakido.Dictionaries/Products/")
-            })
+    fn list_path(custom_dir: Option<&str>) -> PathBuf {
+        if let Some(dir) = custom_dir {
+            return PathBuf::from(dir);
+        }
+
+        Self::read_config().map(PathBuf::from).unwrap_or_else(|_| {
+            // Fallback to default path if config reading fails
+            PathBuf::from(
+                "/Library/Application Support/AppStoreContent/jp.monokakido.Dictionaries/Products/",
+            )
+        })
     }
 
-    fn std_dict_path(name: &str) -> PathBuf {
-        let mut path = Paths::list_path();
-        path.push(format!("jp.monokakido.Dictionaries.{name}"));
+    fn std_dict_path(name: &str, custom_dir: Option<&str>) -> PathBuf {
+        let mut path = Paths::list_path(custom_dir);
+        path.push(format!("{name}"));
         path
     }
 
@@ -108,13 +113,15 @@ impl Paths {
 
 fn parse_dict_name(fname: &OsStr) -> Option<&str> {
     let fname = fname.to_str()?;
-    let dict_prefix = "jp.monokakido.Dictionaries.";
+    let dict_prefix = "";
     fname.strip_prefix(dict_prefix)
 }
 
 impl MonokakidoDict {
-    pub fn list() -> Result<impl Iterator<Item = Result<String, Error>>, Error> {
-        let iter = fs::read_dir(Paths::list_path()).map_err(|_| Error::IOError)?;
+    pub fn list_with_dir(
+        custom_dir: Option<&str>,
+    ) -> Result<impl Iterator<Item = Result<String, Error>>, Error> {
+        let iter = fs::read_dir(Paths::list_path(custom_dir)).map_err(|_| Error::IOError)?;
         Ok(iter.filter_map(|entry| {
             entry
                 .map_err(|_| Error::IOError)
@@ -123,9 +130,17 @@ impl MonokakidoDict {
         }))
     }
 
-    pub fn open(name: &str) -> Result<Self, Error> {
-        let std_path = Paths::std_dict_path(name);
+    pub fn list() -> Result<impl Iterator<Item = Result<String, Error>>, Error> {
+        Self::list_with_dir(None)
+    }
+
+    pub fn open_with_dir(name: &str, custom_dir: Option<&str>) -> Result<Self, Error> {
+        let std_path = Paths::std_dict_path(name, custom_dir);
         Self::open_with_path_name(std_path, name)
+    }
+
+    pub fn open(name: &str) -> Result<Self, Error> {
+        Self::open_with_dir(name, None)
     }
 
     pub fn name(&self) -> &str {
@@ -144,6 +159,7 @@ impl MonokakidoDict {
     fn open_with_path_name(path: impl Into<PathBuf>, name: &str) -> Result<Self, Error> {
         let base_path = path.into();
         let json_path = Paths::json_path(&base_path, name);
+        println!("DEBUG: Reading JSON from: {:?}", json_path);
         let json = fs::read_to_string(json_path).map_err(|_| Error::NoDictJsonFound)?;
         let mut json: DictJson = json::from_str(&json).map_err(|_| Error::InvalidDictJson)?;
         let contents = json.contents.pop().ok_or(Error::InvalidDictJson)?;
@@ -152,10 +168,22 @@ impl MonokakidoDict {
             name: name.to_owned(),
             contents_dir: contents.dir,
         };
+
+        println!("DEBUG: Contents directory: {:?}", paths.contents_path());
+
+        println!("DEBUG: Initializing Pages...");
         let pages = Pages::new(&paths)?;
+
+        println!("DEBUG: Initializing Media (audio)...");
         let audio = Media::new(&paths)?;
+
+        println!("DEBUG: Initializing Media (graphics)...");
         let graphics = Media::new(&paths)?;
-        let keys = Keys::new(paths.contents_path())?;
+
+        println!("DEBUG: Initializing Keys...");
+        let keys = Keys::new(paths.key_headword_path())?;
+
+        println!("DEBUG: All components initialized successfully!");
 
         Ok(MonokakidoDict {
             paths,

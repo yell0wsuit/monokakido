@@ -35,11 +35,11 @@ mod abi {
         pub(super) fn from(r: &mut impl Read) -> Result<Self, Error> {
             let mut h = FileHeader::default();
             r.read_exact(&mut h.as_bytes_mut()[..0x10])?;
-            if h.ver.read() == 0x10000 && h.words_offset.read() == 0x10{
+            if h.ver.read() == 0x10000 && h.words_offset.read() == 0x10 {
             } else if h.ver.read() == 0x20000 && h.words_offset.read() == 0x20 {
                 r.read_exact(&mut h.as_bytes_mut()[0x10..])?;
             } else {
-                return Err(Error::KeyFileHeaderValidate)
+                return Err(Error::KeyFileHeaderValidate);
             }
             if h.ver.read() == 0x10000
                 && h.magic1.read() == 0
@@ -112,7 +112,9 @@ pub struct Keys {
 
 impl KeyIndex {
     fn get(&self, i: usize) -> Result<usize, Error> {
-        let Some(index) = &self.index else { return Err(Error::IndexDoesntExist) };
+        let Some(index) = &self.index else {
+            return Err(Error::IndexDoesntExist);
+        };
         let i = i + 1; // Because the the index is prefixed by its legth
         if i >= index.len() {
             return Err(Error::InvalidIndex);
@@ -141,7 +143,9 @@ impl Keys {
 
         file.seek(std::io::SeekFrom::Start(hdr.words_offset.read() as u64))?;
         let words = read_vec(&mut file, hdr.words_offset.us(), hdr.idx_offset.us())?;
-        let Some(words) = words else { return Err(Error::InvalidIndex); };
+        let Some(words) = words else {
+            return Err(Error::InvalidIndex);
+        };
 
         let idx_end = (if hdr.next_offset.us() == 0 {
             file_size
@@ -177,13 +181,45 @@ impl Keys {
         let index_d = read_vec(&mut file, ihdr.index_d_offset.us(), idx_end)?;
         Self::check_vec_len(&index_d)?;
 
-        Ok(Keys {
+        let keys = Keys {
             words,
             index_len: KeyIndex { index: index_a },
             index_prefix: KeyIndex { index: index_b },
             index_suffix: KeyIndex { index: index_c },
             index_d: KeyIndex { index: index_d },
-        })
+        };
+
+        // DEBUG: Print sample words from different parts of the dictionary
+        println!("DEBUG: Sample words from dictionary:");
+        let total_words = keys.index_prefix.len();
+
+        // Show first 5 words
+        println!("  First 5 words:");
+        for i in 0..std::cmp::min(5, total_words) {
+            if let Ok((word, _)) = keys.get_idx(&keys.index_prefix, i) {
+                println!("    {}: '{}'", i, word);
+            }
+        }
+
+        // Show words around position 15000 (might catch 'h' words)
+        println!("  Words around position 15000:");
+        for i in 14995..std::cmp::min(15005, total_words) {
+            if let Ok((word, _)) = keys.get_idx(&keys.index_prefix, i) {
+                println!("    {}: '{}'", i, word);
+            }
+        }
+
+        // Show words around position 25000
+        println!("  Words around position 25000:");
+        for i in 24995..std::cmp::min(25005, total_words) {
+            if let Ok((word, _)) = keys.get_idx(&keys.index_prefix, i) {
+                println!("    {}: '{}'", i, word);
+            }
+        }
+
+        println!("DEBUG: Total words in dictionary: {}", total_words);
+
+        Ok(keys)
     }
 
     fn get_page_iter(&self, pages_offset: usize) -> Result<PageIter, Error> {
@@ -206,23 +242,16 @@ impl Keys {
     }
 
     pub(crate) fn cmp_key(&self, target: &str, idx: usize) -> Result<Ordering, Error> {
-        let offset = self.index_prefix.get(idx)? + size_of::<LE32>() + 1;
-        let words_bytes = LE32::slice_as_bytes(&self.words);
-        if words_bytes.len() < offset + target.len() + 1 {
-            return Err(Error::InvalidIndex); // Maybe just return Ordering::Less instead?
-        }
-        let found_tail = &words_bytes[offset..];
-        let found = &found_tail[..target.len()];
-        Ok(match found.cmp(target.as_bytes()) {
-            Ordering::Equal => {
-                if found_tail[target.len()] == b'\0' {
-                    Ordering::Equal
-                } else {
-                    Ordering::Greater
-                }
-            }
-            ord => ord,
-        })
+        // Get the actual word string
+        let (word, _) = self.get_idx(&self.index_prefix, idx)?;
+
+        // DEBUG: Show what we're actually comparing
+        println!("DEBUG: Comparing target '{}' with word '{}'", target, word);
+
+        // Use byte comparison instead of lexicographic comparison
+        let result = target.as_bytes().cmp(word.as_bytes());
+        println!("DEBUG: Comparison result: {:?}", result);
+        Ok(result)
     }
 
     pub fn get_idx(&self, index: &KeyIndex, idx: usize) -> Result<(&str, PageIter<'_>), Error> {
@@ -238,22 +267,48 @@ impl Keys {
 
     pub fn search_exact(&self, target_key: &str) -> Result<(usize, PageIter<'_>), Error> {
         let target_key = &to_katakana(target_key);
-        let mut high = self.index_prefix.len();
+        println!("DEBUG: Searching for: '{}'", target_key);
+
+        let mut high = self.index_prefix.len().saturating_sub(1); // Prevent underflow
         let mut low = 0;
 
         // TODO: Revise corner cases and add tests for this binary search
         while low <= high {
             let mid = low + (high - low) / 2;
+            println!(
+                "DEBUG: Binary search - low: {}, high: {}, mid: {}",
+                low, high, mid
+            );
 
             let cmp = self.cmp_key(target_key, mid)?;
+            println!("DEBUG: Comparison result: {:?}", cmp);
+
+            // Let's also see what word we're comparing against
+            if let Ok((word, _)) = self.get_idx(&self.index_prefix, mid) {
+                println!("DEBUG: Word at position {}: '{}'", mid, word);
+            }
 
             match cmp {
-                Ordering::Less => low = mid + 1,
-                Ordering::Greater => high = mid - 1,
-                Ordering::Equal => return Ok((mid, self.get_idx(&self.index_prefix, mid)?.1)),
+                Ordering::Less => {
+                    if mid == 0 {
+                        break; // Can't go lower
+                    }
+                    high = mid - 1;
+                }
+                Ordering::Greater => low = mid + 1,
+                Ordering::Equal => {
+                    println!("DEBUG: Found exact match at position {}", mid);
+                    return Ok((mid, self.get_idx(&self.index_prefix, mid)?.1));
+                }
+            }
+
+            // Additional safety check to prevent infinite loops
+            if low > high {
+                break;
             }
         }
 
+        println!("DEBUG: Search failed - word not found");
         Err(Error::NotFound)
     }
 }

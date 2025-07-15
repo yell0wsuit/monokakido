@@ -91,6 +91,9 @@ jobs:
               with:
                   path: ./artifacts
 
+            - name: List downloaded files
+              run: ls -R ./artifacts
+
             - name: Create GitHub Release
               uses: softprops/action-gh-release@v2
               with:

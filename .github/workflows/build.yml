@@ -74,6 +74,9 @@ jobs:
             - name: Run tests
               run: cargo test --verbose
 
+            - name: List build outputs
+              run: ls -l target/release
+
             - name: Upload artifact
               uses: actions/upload-artifact@main
               with:

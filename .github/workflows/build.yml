@@ -77,6 +77,10 @@ jobs:
             - name: List build outputs
               run: ls -l target/release
 
+            - name: Rename binary for release
+              run: mv target/release/monokakido-cli target/release/monokakido-cli-${{ matrix.os }}
+              if: matrix.os != 'windows-latest'
+
             - name: Upload artifact
               uses: actions/upload-artifact@main
               with:
